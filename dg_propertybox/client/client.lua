@@ -10,7 +10,6 @@ local function isPolice()
     return job and Config.PoliceJobs[job] == true
 end
 
--- Open stash when server tells us to
 RegisterNetEvent('pd_propertybox:client:openStash', function(owner)
     if not owner then return end
 
@@ -20,7 +19,6 @@ RegisterNetEvent('pd_propertybox:client:openStash', function(owner)
     })
 end)
 
--- Police deposit prompt (PIN only — no ID, no auto take)
 local function depositPrompt()
     if not isPolice() then return end
     if not near(Config.Deposit.coords, Config.Deposit.radius) then return end
@@ -40,7 +38,6 @@ local function depositPrompt()
     TriggerServerEvent('pd_propertybox:server:depositOpenByPin', tostring(input[1]))
 end
 
--- Public pickup prompt
 local function pickupPrompt()
     if not near(Config.Pickup.coords, Config.Pickup.radius) then return end
 
@@ -60,9 +57,6 @@ end
 
 CreateThread(function()
 
-    -- =========================
-    -- Deposit Box (Police Only)
-    -- =========================
     exports.ox_target:addSphereZone({
         coords = Config.Deposit.coords,
         radius = Config.Deposit.radius,
@@ -72,7 +66,7 @@ CreateThread(function()
                 name = 'pd_property_deposit',
                 icon = 'fa-solid fa-box-archive',
                 label = 'Deposit Property (Police)',
-                distance = Config.Deposit.radius, -- ✅ third eye distance limit
+                distance = Config.Deposit.radius,
                 canInteract = function()
                     return isPolice() and near(Config.Deposit.coords, Config.Deposit.radius)
                 end,
@@ -81,9 +75,6 @@ CreateThread(function()
         }
     })
 
-    -- =========================
-    -- Pickup Box (Public)
-    -- =========================
     exports.ox_target:addSphereZone({
         coords = Config.Pickup.coords,
         radius = Config.Pickup.radius,
@@ -93,7 +84,7 @@ CreateThread(function()
                 name = 'pd_property_pickup',
                 icon = 'fa-solid fa-box-open',
                 label = 'Retrieve Property',
-                distance = Config.Pickup.radius, -- ✅ third eye distance limit
+                distance = Config.Pickup.radius,
                 canInteract = function()
                     return near(Config.Pickup.coords, Config.Pickup.radius)
                 end,

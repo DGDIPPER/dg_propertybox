@@ -1,14 +1,7 @@
--- pd_propertybox/server.lua
--- JSON persistence for PIN stashes (no SQL required)
-
 local PINS_FILE = 'data/pins.json'
 
--- activePins structure:
--- activePins["1234"] = { items = { {name="", count=, metadata=, slot=} ... } }
 local activePins = {}
 local stashRegistered = false
-
--- Track which pin a player currently has open so we only save that one on close
 local openedPinByPlayer = {}
 
 local function loadPins()
@@ -43,7 +36,6 @@ end
 local function ensureStash()
     if stashRegistered then return end
 
-    -- owner=true => owner-based stash, we pass owner = "pin:1234"
     exports.ox_inventory:RegisterStash(
         Config.StashId,
         Config.StashLabel,
@@ -66,21 +58,16 @@ local function getPinData(pin)
     return activePins[pin]
 end
 
--- Build the "inventory reference" the way your client opens it:
--- openInventory('stash', { id=Config.StashId, owner=owner })
 local function invRef(owner)
     return { id = Config.StashId, owner = owner }
 end
 
--- Version-tolerant read of stash items
 local function readStash(owner)
     local ok, items = pcall(function()
-        -- many ox versions accept a table {id, owner}
         return exports.ox_inventory:GetInventoryItems(invRef(owner))
     end)
 
     if not ok or type(items) ~= 'table' then
-        -- fallback: some versions want (id, owner)
         ok, items = pcall(function()
             return exports.ox_inventory:GetInventoryItems(Config.StashId, owner)
         end)
@@ -104,7 +91,6 @@ local function readStash(owner)
     return out
 end
 
--- Remove everything currently in the stash (so we can rebuild from json)
 local function clearStash(owner)
     local items = readStash(owner)
     if not items or #items == 0 then return end
@@ -114,14 +100,12 @@ local function clearStash(owner)
             exports.ox_inventory:RemoveItem(invRef(owner), it.name, it.count, it.metadata, it.slot)
         end)
 
-        -- fallback signature (id, owner, ...)
         pcall(function()
             exports.ox_inventory:RemoveItem(Config.StashId, it.name, it.count, it.metadata, it.slot, owner)
         end)
     end
 end
 
--- Add items from json into stash
 local function writeStash(owner, items)
     if type(items) ~= 'table' then return end
 
@@ -131,7 +115,6 @@ local function writeStash(owner, items)
                 exports.ox_inventory:AddItem(invRef(owner), it.name, it.count, it.metadata, it.slot)
             end)
 
-            -- fallback signature (id, owner, ...)
             pcall(function()
                 exports.ox_inventory:AddItem(Config.StashId, it.name, it.count, it.metadata, it.slot, owner)
             end)
@@ -156,7 +139,6 @@ local function rebuildStashFromJson(pin)
     local owner = stashOwner(pin)
     local data = getPinData(pin)
 
-    -- make stash match json exactly
     clearStash(owner)
     writeStash(owner, data.items)
 end
@@ -170,7 +152,6 @@ local function saveStashToJson(pin)
     savePins()
 end
 
--- After close/open, if stash ends up empty, allow PIN reuse
 local function scheduleAutoClearIfEmpty(pin)
     pin = tostring(pin)
     SetTimeout(6000, function()
@@ -184,11 +165,6 @@ local function scheduleAutoClearIfEmpty(pin)
     end)
 end
 
--- ============================================================
--- EVENTS
--- ============================================================
-
--- Police: open stash for deposit (manual)
 RegisterNetEvent('pd_propertybox:server:depositOpenByPin', function(pin)
     local src = source
     pin = tostring(pin)
@@ -203,17 +179,13 @@ RegisterNetEvent('pd_propertybox:server:depositOpenByPin', function(pin)
         return
     end
 
-    -- Reserve pin record if missing
     getPinData(pin)
-
-    -- Restore stash from json so it persists without SQL
     rebuildStashFromJson(pin)
 
     openedPinByPlayer[src] = pin
     TriggerClientEvent('pd_propertybox:client:openStash', src, stashOwner(pin))
 end)
 
--- Public pickup
 RegisterNetEvent('pd_propertybox:server:pickupOpenByPin', function(pin)
     local src = source
     pin = tostring(pin)
@@ -228,14 +200,12 @@ RegisterNetEvent('pd_propertybox:server:pickupOpenByPin', function(pin)
         return
     end
 
-    -- Restore stash from json
     rebuildStashFromJson(pin)
 
     openedPinByPlayer[src] = pin
     TriggerClientEvent('pd_propertybox:client:openStash', src, stashOwner(pin))
 end)
 
--- Optional manual clear (police)
 RegisterCommand('propertyclear', function(source, args)
     local src = source
     if src == 0 then return end
@@ -256,21 +226,15 @@ RegisterCommand('propertyclear', function(source, args)
     end
 end)
 
--- Save stash when inventory closes (most reliable “no SQL” persistence point)
 AddEventHandler('ox_inventory:closedInventory', function(playerId)
     local pin = openedPinByPlayer[playerId]
     if not pin then return end
 
     openedPinByPlayer[playerId] = nil
-
-    -- Save current stash state into pins.json
     saveStashToJson(pin)
-
-    -- If empty, free the pin shortly after
     scheduleAutoClearIfEmpty(pin)
 end)
 
--- Cleanup if player drops while stash open (still try saving)
 AddEventHandler('playerDropped', function()
     local src = source
     local pin = openedPinByPlayer[src]
